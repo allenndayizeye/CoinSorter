@@ -1,0 +1,141 @@
+import cv2
+import cvzone
+import numpy as np
+import time
+from gpiozero import OutputDevice
+
+
+# Define the GPIO pins connected to IN1, IN2, IN3, IN4
+IN1 = OutputDevice(17)
+IN2 = OutputDevice(27)
+IN3 = OutputDevice(24)
+IN4 = OutputDevice(25)
+
+STEP_PIN = OutputDevice(18)
+DIR_PIN = OutputDevice(23)
+
+# Step sequence for the 28BYJ-48 stepper motor
+step_sequence = [
+    [1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [0, 1, 0, 0],
+    [0, 1, 1, 0],
+    [0, 0, 1, 0],
+    [0, 0, 1, 1],
+    [0, 0, 0, 1],
+    [1, 0, 0, 1]
+]
+
+cap = cv2.VideoCapture(0)
+cap.set(3, 640)
+cap.set(4, 480)
+
+classified = False
+totalMoney = 0
+
+def empty(a):
+    pass
+
+def platform_motor(steps, delay=0.001, reverse=False):
+    if reverse:
+        sequence = step_sequence[::-1]
+    else:
+        sequence = step_sequence
+
+    for _ in range(steps):
+        for step in sequence:
+            IN1.value, IN2.value, IN3.value, IN4.value = step
+            time.sleep(delay)
+
+def deposit_motor(steps, delay=0.005, direction=True):
+    if direction:
+        DIR_PIN.on()
+    else:
+        DIR_PIN.off()
+    for _ in range(steps):
+        STEP_PIN.on()
+        time.sleep(delay)
+        STEP_PIN.off()
+        time.sleep(delay)
+
+
+def preProcessing(img):
+    imgPre = cv2.GaussianBlur(img, (5,5), 3)
+    imgPre = cv2.Canny(imgPre, 59, 416)
+    kernel = np.ones((5,5), np.uint8)
+    imgPre = cv2.dilate(imgPre, kernel, iterations=1)
+    imgPre = cv2.morphologyEx(imgPre, cv2.MORPH_CLOSE, kernel)
+    return imgPre
+
+while True:
+    success, img = cap.read()
+    imgPre = preProcessing(img)
+    imgContours, conFound = cvzone.findContours(img, imgPre, minArea=500)
+
+    validContours = []
+
+    # Filter for only contours with approx == 8
+    if conFound:
+        for contour in conFound:
+            peri = cv2.arcLength(contour['cnt'], True)
+            approx = cv2.approxPolyDP(contour['cnt'], 0.02 * peri, True)
+
+            if len(approx) == 8 and contour['area'] > 22000:
+                validContours.append((contour, approx))
+
+    # If valid (8-point) contour is found and not yet classified
+    if validContours and not classified:
+        print("Valid coin shape detected. Waiting 1 second...")
+        time.sleep(1)
+
+        for contour, approx in validContours:
+            area = contour['area']
+
+            if 23000 < area < 23900:
+                deposit_motor(0)
+                time.sleep(1)
+                platform_motor(50)
+                time.sleep(1)
+                deposit_motor(0, direction=False)
+                platform_motor(38, reverse=True)
+
+                totalMoney = 10
+            elif 26000 < area < 27500:
+                deposit_motor(40)
+                time.sleep(1)
+                platform_motor(50)
+                time.sleep(1)
+                deposit_motor(40, direction=False)
+                platform_motor(38, reverse=True)
+                totalMoney = 1
+            elif 33000 < area < 34000:
+                deposit_motor(80)
+                time.sleep(1)
+                platform_motor(50)
+                time.sleep(1)
+                deposit_motor(80, direction=False)
+                platform_motor(38, reverse=True)
+                totalMoney = 5
+            elif 40000 < area < 43000:
+                deposit_motor(120)
+                time.sleep(1)
+                platform_motor(50)
+                time.sleep(1)
+                deposit_motor(120, direction=False)
+                platform_motor(38, reverse=True)
+                totalMoney = 25
+            else:
+                totalMoney = 0
+
+            print(f"Coin classified: {totalMoney} cents")
+            classified = True  # Prevent reclassification
+
+    # If no valid contours, reset state
+    elif not validContours:
+        classified = False
+        totalMoney = 0
+
+    imgStacked = cvzone.stackImages([img, imgPre, imgContours], 2, 1)
+    cv2.imshow("image", imgStacked)
+
+    cv2.waitKey(1)
