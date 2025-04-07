@@ -1,0 +1,168 @@
+import cv2
+import numpy as np
+from gpiozero import OutputDevice, Button
+from time import sleep
+import cvzone
+
+cap = cv2.VideoCapture(0)
+cap.set(3, 640)
+cap.set(4, 480)
+
+totalMoney = 0
+
+def empty(a):
+    pass
+
+def preProcessing(img):
+
+    imgPre = cv2.GaussianBlur(img, (5,5),3)
+    thresh1 = cv2.getTrackbarPos("Threshold1", "Settings")
+    thresh2 = cv2.getTrackbarPos("Threshold2", "Settings")
+    imgPre = cv2.Canny(imgPre, 117, 255)
+    kernel = np.ones((2,2),np.uint8)
+    imgPre = cv2.dilate(imgPre,kernel,iterations=1)
+    imgPre = cv2.morphologyEx(imgPre, cv2.MORPH_CLOSE, kernel)
+
+
+    return imgPre
+    
+cv2.namedWindow("Settings")
+cv2.resizeWindow("Settings", 640, 240)
+cv2.createTrackbar("Threshold1", "Settings", 219, 255, empty)
+cv2.createTrackbar("Threshold2", "Settings", 233, 255, empty)
+
+Mode_Button =  #put whatever pin you connect this button to
+Select_Button =  #same here
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(Mode_Button,GPIO.IN,pull_up_down=GPIO.PUD_UP)
+GPIO.setup(Select_Button,GPIO.IN,pull_up_down=GPIO.PUD_UP)
+
+# Define LCD parameters
+LCD_WIDTH = 16
+LCD_CHR = True
+LCD_CMD = False
+LCD_LINE_1 = 0x80
+LCD_LINE_2 = 0xC0
+
+# Timing constants
+E_PULSE = 0.001
+E_DELAY = 0.001
+
+# Sorting modes
+modes = ["Value", "Mint", "Year"]
+mode_index = 0  # Start with "Value" mode
+confirmed = False  # Track confirmation state
+
+STEP_PIN = OutputDevice(18)
+DIR_PIN = OutputDevice(23)
+
+
+IN1 = OutputDevice(17)
+IN2 = OutputDevice(27)
+IN3 = OutputDevice(24)
+IN4 = OutputDevice(25)
+
+step_sequence = [
+    [1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [0, 1, 0, 0],
+    [0, 1, 1, 0],
+    [0, 0, 1, 0],
+    [0, 0, 1, 1],
+    [0, 0, 0, 1],
+    [1, 0, 0, 1]
+]
+
+def step_motor(steps, delay=0.005):
+    for _ in range(steps):
+        STEP_PIN.on()
+        time.sleep(delay)
+        STEP_PIN.off()
+        time.sleep(delay)
+        
+ coin_position_steps = {  #where we can just call how many steps based on how the coin is classified
+   "penny" : 0,      #if we should change if its too complicated then you can just change it 
+   "nickel" : 40,  #just putting random step numbers, definetly can troubleshoot the correct amount of steps
+   "dime" : 80,
+   "quarter" : 120,
+   "nonvalid coin" : 160
+   }
+
+selected_mode_active = False
+
+def mode_button_callback(channel):                    #mode button callback and select button callback allows the code 
+    global current_mode, selected_mode_active         #to be able to keep running the same mode until the mode is changed
+    if selected_mode_active:
+        selected_mode_active = False
+    else:
+        current_mode = (current_mode + 1) % len(modes)
+
+def select_button_callback(channel):
+    global selected_mode_active
+    selected_mode = modes[current_mode]
+    selected_mode_active = True
+    
+    
+    
+    while selected_mode_active:
+        if selected_mode = "Value":
+            sort_by_value()
+        elif selected_mode = "Mint":
+            sort_by_mint()
+        elif selected_mode = "Year":
+            sort_by_year()
+        
+        time.sleep(1)
+            
+
+def sort_by_value():
+    while True:
+    sucess, img = cap.read()
+    imgPre = preProcessing(img)
+    imgContours, conFound = cvzone.findContours(img,imgPre,minArea=20)
+
+    if conFound:
+        for contour in conFound:
+            peri = cv2.arcLength(contour['cnt'], True)
+            approx = cv2.approxPolyDP(contour['cnt'], 0.02 * peri, True)
+
+            if len(approx) > 5:
+                area = contour['area']
+
+                if 1500<area<1700:
+                    totalMoney =10
+                elif 1710<area<1900:
+                    totalMoney =1
+                elif 2000<area<2500:
+                    totalMoney =5
+                elif 2600<area<3200:
+                    totalMoney =25
+                else:
+                    totalMoney =0
+    print(totalMoney)
+    
+    if totalMoney = 1:
+        value = "penny"
+    elif totalMoney = 5:
+        value = "nickel"
+    elif totalMoney = 10:
+        value = "dime"
+    elif totalMoney = 25:
+        value = "quarter"
+    elif totalMoney = 0:
+        value = "nonvalid coin"
+    
+    print("Coin detected as: {value}")
+    
+    if value in coin_position_steps:
+        steps = coin_position_steps[value]
+        move_steps(steps)
+        
+        
+    time.sleep(5)
+
+def sort_by_mint():
+    
+    
+def sort_by_year():
